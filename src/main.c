@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_rect.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <time.h>
 
 #ifndef DEBUG
@@ -14,57 +15,152 @@
 #define PLAYER_HEIGHT 40
 #define PLAYER_WIDTH 20
 
-typedef struct EntityCfg {
-    int height, width, health;
-} EntityCfg;
-
-typedef struct Movement {
-    bool up, down, left, right;
-} Movement;
-
+// game
 typedef enum GameState {
     GAME_MENU,
     GAME_RUNNING,
     GAME_END,
 } GameState;
 
-typedef struct Game {
-    GameState state;
-} Game;
+typedef enum GameExitState {
+    GAME_EXIT_SUCCESS,
+    GAME_EXIT_FAIL,
+} GameExitState;
 
-// game
+typedef struct GameGlobal {
+    void (*render)(void);
+    void (*update)(void);
+    void (*handleInput)(void);
+    void (*destroy)(void);
+    GameState state;
+} GameGlobal;
+
 int isRunning = 1;
 double delta;
 time_t start, end;
-Movement movement;
-Game game = {GAME_MENU};
 SDL_Renderer *renderer;
+SDL_Window *window;
+GameGlobal game;
 
 // entities
-SDL_FRect player;
-SDL_FRect enemy;
+typedef enum Facing {
+    FACING_UP,
+    FACING_DOWN,
+    FACING_LEFT,
+    FACING_RIGHT,
+} Facing;
+typedef struct Movement {
+    bool up, down, left, right;
+} Movement;
 
+typedef struct Position {
+    int x;
+    int y;
+} Position;
+
+typedef struct Box {
+    int h;
+    int w;
+    Position pos;
+} Box;
+
+typedef struct Player {
+    int h, w, health;
+    Box hitBox;
+    Box hurtBox;
+    Position pos;
+    Facing facing;
+} Player;
+
+typedef struct Enemy {
+    int h, w, health;
+    Position pos;
+} Enemy;
+
+Movement movement;
+Player player;
+Enemy enemy;
+
+// main menu
 #define MENU_HEIGHT 350
 #define MENU_WIDTH 500
-SDL_FRect menu = {(WINDOW_WIDTH / 2) - (MENU_WIDTH / 2), (WINDOW_HEIGHT / 2) - (MENU_HEIGHT / 2), MENU_WIDTH, MENU_HEIGHT};
+SDL_FRect mainManu = {(WINDOW_WIDTH / 2) - (MENU_WIDTH / 2), (WINDOW_HEIGHT / 2) - (MENU_HEIGHT / 2), MENU_WIDTH, MENU_HEIGHT};
 
-SDL_FRect createRect(EntityCfg e) {
-    return (SDL_FRect) {
-        .x = (WINDOW_WIDTH / 2) - (e.width / 2),
-        .y = (WINDOW_HEIGHT / 2) - (e.height / 2),
-        .h = e.height,
-        .w = e.width
-    };
+// geometry
+void drawRoundedRect(SDL_Renderer *renderer, float x, float y, float w, float h, float r) {
 }
 
+void drawCircle(SDL_Renderer *renderer, float centerX, float centerY, float r) {
+    // circle algo x² + y² = r²
+    for (int x = -r; x <= r; x++) {
+        for (int y = -r; y <= r; y++) {
+            if (x * x + y * y <= r * r) {
+                SDL_RenderPoint(renderer, centerX + x, centerY + y);
+            }
+        }
+    }
+}
+
+// game
 void startGame() {
     // spawn
-    player = createRect((EntityCfg){PLAYER_HEIGHT, PLAYER_WIDTH, 100});
-    enemy = createRect((EntityCfg){30, 20, 100});
-    enemy.x = enemy.x + 30;
+    player.h = PLAYER_HEIGHT;
+    player.w = PLAYER_WIDTH;
+    player.pos.x = (WINDOW_WIDTH / 2) - (player.w / 2);
+    player.pos.y = (WINDOW_HEIGHT / 2) - (player.h / 2);
+    player.facing = FACING_DOWN;
+
+    Box *hurt = &player.hurtBox;
+    hurt->h = player.h - 1;
+    hurt->w = player.w - 1;
+    hurt->pos = player.pos;
+
+    Box *hit = &player.hitBox;
+    hit->h= 20;
+    hit->w= 50;
+    hit->pos = player.pos;
+
+    enemy.h = 30;
+    enemy.w = 20;
+    enemy.pos.x = enemy.pos.x + 30;
 }
 
-void handleInput() {
+void gameUpdate() {
+    delta = difftime(end, start);
+    start = time(NULL);
+
+    if (movement.up) {
+        player.facing = FACING_UP;
+        player.pos.y--;
+        player.hitBox.pos.y--;
+        player.hurtBox.pos.y--;
+    }
+
+    if (movement.down) {
+        player.facing = FACING_DOWN;
+        player.pos.y++;
+        player.hitBox.pos.y++;
+        player.hurtBox.pos.y++;
+    }
+
+    if (movement.left) {
+        player.facing = FACING_LEFT;
+        player.pos.x--;
+        player.hitBox.pos.x--;
+        player.hurtBox.pos.x--;
+    }
+
+    if (movement.right) {
+        player.facing = FACING_RIGHT;
+        player.pos.x++;
+        player.hitBox.pos.x++;
+        player.hurtBox.pos.x++;
+    }
+
+    end = time(NULL);
+}
+
+void gameHandleInput() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (DEBUG) {
@@ -74,9 +170,9 @@ void handleInput() {
         }
 
         if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
-            puts("quitting\n");
+            DEBUG && puts("quitting\n");
             isRunning = 0;
-            break;
+            return;
         }
 
         if (game.state == GAME_MENU) {
@@ -113,37 +209,15 @@ void handleInput() {
     }
 }
 
-void update() {
-    delta = difftime(end, start);
-    start = time(NULL);
-
-    if (movement.up) {
-        player.y--;
-    }
-
-    if (movement.down) {
-        player.y++;
-    }
-
-    if (movement.left) {
-        player.x--;
-    }
-
-    if (movement.right) {
-        player.x++;
-    }
-
-    end = time(NULL);
-}
-
-void render() {
+void gameRender() {
     if (game.state == GAME_MENU) {
         // clear previous frame
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
         SDL_SetRenderDrawColor(renderer, 200, 200, 0, 255);
-        SDL_RenderRect(renderer, &menu);
+        // drawCircle(renderer, 200, 200, 40);
+        SDL_RenderRect(renderer, &mainManu);
 
     } else if (game.state == GAME_RUNNING) {
         // clear previous frame
@@ -152,17 +226,29 @@ void render() {
 
         // draw new frame
         SDL_SetRenderDrawColor(renderer, 100, 100, 0, 255);
-        SDL_RenderRect(renderer, &player);
+        SDL_RenderRect(renderer, &(SDL_FRect){player.hurtBox.pos.x, player.hurtBox.pos.y, player.hurtBox.w, player.hurtBox.h});
+
+
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        SDL_RenderRect(renderer, &(SDL_FRect){player.hitBox.pos.x, player.hitBox.pos.y, player.hitBox.w, player.hitBox.h});
     }
 
     // render new frame
     SDL_RenderPresent(renderer);
 }
 
-int main(void) {
+void gameDestroy() {
+    // SDL_Delay(1000);
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+bool gameInit() {
     SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_Window *window = SDL_CreateWindow(
+    window = SDL_CreateWindow(
         "Fun Times",
         WINDOW_WIDTH,
         WINDOW_HEIGHT,
@@ -170,30 +256,41 @@ int main(void) {
     );
 
     if (!window) {
-        printf("no window");
+        puts("no window");
         SDL_Quit();
-        return 1;
+        return false;
     }
 
     renderer = SDL_CreateRenderer(window, NULL);
 
     if (!renderer) {
-        printf("no renderer");
+        puts("no renderer");
         SDL_Quit();
-        return 1;
+        return false;
+    }
+
+    game.handleInput = gameHandleInput;
+    game.render = gameRender;
+    game.update = gameUpdate;
+    game.destroy = gameDestroy;
+    game.state = GAME_MENU;
+
+    return true;
+}
+
+int main(void) {
+    // game methods totally unecessary but makes me feel at javascript home
+    if (!gameInit()) {
+        return GAME_EXIT_FAIL;
     }
 
     while (isRunning) {
-        handleInput();
-        update();
-        render();
+        game.handleInput();
+        game.update();
+        game.render();
     }
 
+    game.destroy();
 
-    SDL_Delay(1000);
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0;
+    return GAME_EXIT_SUCCESS;
 }
