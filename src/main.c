@@ -82,7 +82,6 @@ typedef struct Action {
     ActionState previous;
 } Action;
 
-
 typedef struct Player {
     int h, w, health;
     Box hitBox;
@@ -101,12 +100,13 @@ Movement movement;
 Player player;
 Enemy enemy;
 
+// geometry
+
 // main menu
 #define MENU_HEIGHT 350
 #define MENU_WIDTH 500
 SDL_FRect mainManu = {(WINDOW_WIDTH / 2) - (MENU_WIDTH / 2), (WINDOW_HEIGHT / 2) - (MENU_HEIGHT / 2), MENU_WIDTH, MENU_HEIGHT};
 
-// geometry
 void drawRoundedRect(SDL_Renderer *renderer, float x, float y, float w, float h, float r) {
 }
 
@@ -276,9 +276,10 @@ void gameRender() {
         SDL_SetRenderDrawColor(renderer, 100, 100, 0, 255);
         SDL_RenderRect(renderer, &(SDL_FRect){player.hurtBox.pos.x, player.hurtBox.pos.y, player.hurtBox.w, player.hurtBox.h});
 
-
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        SDL_RenderRect(renderer, &(SDL_FRect){player.hitBox.pos.x, player.hitBox.pos.y, player.hitBox.w, player.hitBox.h});
+        if (player.action.current == ACTION_ATTACK) {
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+            SDL_RenderRect(renderer, &(SDL_FRect){player.hitBox.pos.x, player.hitBox.pos.y, player.hitBox.w, player.hitBox.h});
+        }
     }
 
     // render new frame
