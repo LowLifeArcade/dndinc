@@ -53,9 +53,15 @@ typedef struct Movement {
     bool up, down, left, right;
 } Movement;
 
+typedef enum PosState {
+    POS_IDLE,
+    POS_WALK,
+    POS_HURT,
+} PosState;
 typedef struct Position {
     int x;
     int y;
+    PosState state;
 } Position;
 
 typedef struct Box {
@@ -64,11 +70,25 @@ typedef struct Box {
     Position pos;
 } Box;
 
+typedef enum ActionState {
+    ACTION_IDLE,
+    ACTION_TALK,
+    ACTION_INSPECT,
+    ACTION_ATTACK,
+} ActionState;
+
+typedef struct Action {
+    ActionState current;
+    ActionState previous;
+} Action;
+
+
 typedef struct Player {
     int h, w, health;
     Box hitBox;
     Box hurtBox;
     Position pos;
+    Action action;
     Facing facing;
 } Player;
 
@@ -108,6 +128,9 @@ void startGame() {
     player.w = PLAYER_WIDTH;
     player.pos.x = (WINDOW_WIDTH / 2) - (player.w / 2);
     player.pos.y = (WINDOW_HEIGHT / 2) - (player.h / 2);
+    player.pos.state = POS_IDLE;
+    player.action.previous = ACTION_IDLE;
+    player.action.current = ACTION_IDLE;
     player.facing = FACING_DOWN;
 
     Box *hurt = &player.hurtBox;
@@ -128,6 +151,12 @@ void startGame() {
 void gameUpdate() {
     delta = difftime(end, start);
     start = time(NULL);
+
+    if (player.action.current == ACTION_ATTACK) {
+        DEBUG && puts("attacking");
+    }
+
+    bool playerMoving = (movement.up || movement.down || movement.left || movement.right);
 
     if (movement.up) {
         player.facing = FACING_UP;
@@ -155,6 +184,14 @@ void gameUpdate() {
         player.pos.x++;
         player.hitBox.pos.x++;
         player.hurtBox.pos.x++;
+    }
+
+    if (playerMoving && player.pos.state != POS_WALK) {
+        DEBUG && puts("player walking");
+        player.pos.state = POS_WALK;
+    } else if (!playerMoving && player.pos.state != POS_IDLE) {
+        DEBUG && puts("player idle");
+        player.pos.state = POS_IDLE;
     }
 
     end = time(NULL);
@@ -185,21 +222,32 @@ void gameHandleInput() {
         }
 
         if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) {
+            bool isKeyDown = event.type == SDL_EVENT_KEY_DOWN;
             switch (event.key.key) {
                 case SDLK_D:
-                    movement.right = event.type == SDL_EVENT_KEY_DOWN;
+                    movement.right = isKeyDown;
                     break;
 
                 case SDLK_A:
-                    movement.left = event.type == SDL_EVENT_KEY_DOWN;
+                    movement.left = isKeyDown;
                     break;
 
                 case SDLK_W:
-                    movement.up = event.type == SDL_EVENT_KEY_DOWN;
+                    movement.up = isKeyDown;
                     break;
 
                 case SDLK_S:
-                    movement.down = event.type == SDL_EVENT_KEY_DOWN;
+                    movement.down = isKeyDown;
+                    break;
+
+                case SDLK_SPACE:
+                    if (isKeyDown && player.action.current != ACTION_ATTACK) {
+                        player.action.previous = player.action.current;
+                        player.action.current = ACTION_ATTACK;
+                    } else if (!isKeyDown && player.action.current == ACTION_ATTACK) {
+                        player.action.current = player.action.previous;
+                    }
+
                     break;
 
                 default:
